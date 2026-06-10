@@ -1,4 +1,6 @@
 import streamlit as st
+import tensorflow as tf
+import joblib
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -208,7 +210,7 @@ def plot_mamdani(usia, bp, bmi, ap_lo, chol):
     
     legend = ax.legend(loc='upper left', facecolor='#1c2028', edgecolor=GRID, labelcolor='#c9d1d9', fontsize=10)
     
-    info = (f'Input  →  Usia: {usia:.1f} th | BP Sistolik: {bp} mmHg | BP Diastolik: {ap_lo} mmHg | BMI: {bmi:.1f} | Kolesterol: {chol}\\n'
+    info = (f'Input  →  Usia: {usia:.1f} th | BP Sistolik: {bp} mmHg | BP Diastolik: {ap_lo} mmHg | BMI: {bmi:.1f} | Kolesterol: {chol}\n'
             f'Output →  Centroid Mamdani: {centroid:.2f}%  |  Kategori: {label_risiko(centroid)}')
     fig.text(0.5, 0.01, info, ha='center', color='#8b949e', fontsize=10, bbox=dict(fc='#161b22', ec=GRID, pad=5))
     plt.tight_layout(rect=[0, 0.07, 1, 1])
@@ -296,7 +298,7 @@ def plot_sugeno(usia, bp, bmi, ap_lo, chol):
     # Panel 4: Sugeno Weighted
     ax4 = fig.add_subplot(gs[2, 1], facecolor=CARD)
     if active:
-        rule_ids  = [f'R{r}\\n({k[:3]})' for (r, a, k) in active]
+        rule_ids  = [f'R{r}\n({k[:3]})' for (r, a, k) in active]
         contrib   = [a * SUGENO_SINGLETON[k] for (r, a, k) in active]
         colors    = [COLOR_MAP[k] for (r, a, k) in active]
         x_pos     = range(len(active))
@@ -315,7 +317,7 @@ def plot_sugeno(usia, bp, bmi, ap_lo, chol):
     ax4.tick_params(colors='#8b949e', labelsize=8)
     
     fig.suptitle(
-        f'Sugeno FIS | Usia: {usia:.1f} | BP Sis: {bp} | BP Dia: {ap_lo} | BMI: {bmi:.1f} | Kolesterol: {chol}\\n'
+        f'Sugeno FIS | Usia: {usia:.1f} | BP Sis: {bp} | BP Dia: {ap_lo} | BMI: {bmi:.1f} | Kolesterol: {chol}\n'
         f'Output Weighted Average: {sugeno_out:.2f}%  →  Kategori: {label_risiko(sugeno_out)}',
         color='#ffffff', fontsize=12, fontweight='bold', y=1.01
     )
@@ -325,6 +327,18 @@ def plot_sugeno(usia, bp, bmi, ap_lo, chol):
 # ==========================================
 # 5. STREAMLIT UI
 # ==========================================
+
+
+@st.cache_resource
+def load_model_and_scaler():
+    try:
+        loaded_model  = tf.keras.models.load_model('model_hybrid_dka.h5')
+        loaded_scaler = joblib.load('scaler_hybrid_dka.pkl')
+        return loaded_model, loaded_scaler
+    except Exception as e:
+        return None, None
+
+model_dl, scaler_dl = load_model_and_scaler()
 
 st.title("🫀 Fuzzy Inference System - Risiko Kardiovaskular")
 st.markdown("""
@@ -343,15 +357,27 @@ if st.sidebar.button("Hitung Prediksi Risiko", type="primary"):
     st.markdown("---")
     st.subheader("📊 Hasil Prediksi")
     
-    col1, col2 = st.columns(2)
-    
     score_m = mamdani_inferensi(in_usia, in_aphi, in_bmi, in_aplo, in_chol)
     score_s = sugeno_inferensi(in_usia, in_aphi, in_bmi, in_aplo, in_chol)
+    
+    dl_prob = 0.0
+    dl_label = "Model Not Found"
+    if model_dl is not None and scaler_dl is not None:
+        X_input = scaler_dl.transform([[in_usia, in_aphi, in_aplo, in_bmi, in_chol, score_m]])
+        dl_prob = float(model_dl.predict(X_input, verbose=0)[0][0])
+        dl_label = 'Tinggi' if dl_prob >= 0.5 else 'Rendah'
+        
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         st.metric(label="Skor Mamdani", value=f"{score_m:.2f}%", delta=label_risiko(score_m), delta_color="inverse")
     with col2:
         st.metric(label="Skor Sugeno", value=f"{score_s:.2f}%", delta=label_risiko(score_s), delta_color="inverse")
+    with col3:
+        if model_dl is not None:
+            st.metric(label="DL Hybrid", value=f"{dl_prob*100:.2f}%", delta=dl_label, delta_color="inverse")
+        else:
+            st.metric(label="DL Hybrid", value="N/A", delta="File Model Hilang")
         
     st.markdown("---")
     st.subheader("📈 Visualisasi Proses Fuzzy (Mamdani)")
