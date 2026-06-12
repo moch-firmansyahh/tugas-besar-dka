@@ -1,7 +1,13 @@
 import streamlit as st
-import tensorflow as tf
-import joblib
 import numpy as np
+
+# TensorFlow & joblib: optional (hanya untuk DL Hybrid)
+try:
+    import tensorflow as tf
+    import joblib
+    HAS_DL = True
+except ImportError:
+    HAS_DL = False
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import matplotlib.gridspec as gridspec
@@ -51,13 +57,18 @@ def mu_bmi_obese(x):   return trapmf(x, 28, 32, 55, 60)
 def mu_chol_normal(x): return trimf(x, 0, 1, 2)
 def mu_chol_tinggi(x): return trimf(x, 1, 3, 4)
 
+# --- GLUKOSA (Variabel Baru) ---
+def mu_gluc_normal(x): return trimf(x, 0, 1, 2)
+def mu_gluc_tinggi(x): return trimf(x, 1, 2, 4)
+
 # --- OUTPUT: RISIKO (Mamdani) ---
 def mu_risk_rendah(s): return trapmf(s, -5, 0, 25, 45)
 def mu_risk_sedang(s): return trimf(s, 30, 50, 70)
 def mu_risk_tinggi(s): return trapmf(s, 55, 75, 100, 105)
 
 # --- OUTPUT: RISIKO (Sugeno — singleton) ---
-SUGENO_SINGLETON = {'rendah': 20.0, 'sedang': 50.0, 'tinggi': 85.0}
+# Dioptimasi dari (20, 50, 85) berdasarkan analisis data 68.755 sampel
+SUGENO_SINGLETON = {'rendah': 15.0, 'sedang': 45.0, 'tinggi': 85.0}
 
 OUTPUT_MF = {
     'rendah': mu_risk_rendah,
@@ -66,42 +77,64 @@ OUTPUT_MF = {
 }
 
 # ==========================================
-# 2. RULE BASE (25 Aturan)
+# 2. RULE BASE (42 Aturan — 6 Input)
 # ==========================================
 RULES = [
-    # (fn_usia, fn_bp, fn_bplo, fn_bmi, fn_chol, konsekuen)
-    (mu_usia_muda,   mu_bp_normal, mu_bplo_normal, mu_bmi_normal, mu_chol_normal, 'rendah'),
-    (mu_usia_muda,   mu_bp_normal, mu_bplo_normal, mu_bmi_over,   mu_chol_normal, 'rendah'),
-    (mu_usia_muda,   mu_bp_normal, mu_bplo_normal, mu_bmi_obese,  mu_chol_normal, 'sedang'),
-    (mu_usia_muda,   mu_bp_pre,    mu_bplo_pre,    mu_bmi_normal, mu_chol_normal, 'rendah'),
-    (mu_usia_muda,   mu_bp_pre,    mu_bplo_pre,    mu_bmi_over,   mu_chol_tinggi, 'sedang'),
-    (mu_usia_muda,   mu_bp_hiper,  mu_bplo_hiper,  mu_bmi_obese,  mu_chol_tinggi, 'tinggi'),
-    (mu_usia_muda,   mu_bp_hiper,  mu_bplo_hiper,  mu_bmi_normal, mu_chol_tinggi, 'sedang'),
-    (mu_usia_sedang, mu_bp_normal, mu_bplo_normal, mu_bmi_normal, mu_chol_normal, 'rendah'),
-    (mu_usia_sedang, mu_bp_normal, mu_bplo_normal, mu_bmi_over,   mu_chol_normal, 'sedang'),
-    (mu_usia_sedang, mu_bp_normal, mu_bplo_pre,    mu_bmi_obese,  mu_chol_tinggi, 'sedang'),
-    (mu_usia_sedang, mu_bp_pre,    mu_bplo_pre,    mu_bmi_normal, mu_chol_normal, 'sedang'),
-    (mu_usia_sedang, mu_bp_pre,    mu_bplo_pre,    mu_bmi_over,   mu_chol_tinggi, 'tinggi'),
-    (mu_usia_sedang, mu_bp_hiper,  mu_bplo_hiper,  mu_bmi_obese,  mu_chol_tinggi, 'tinggi'),
-    (mu_usia_sedang, mu_bp_hiper,  mu_bplo_hiper,  mu_bmi_normal, mu_chol_normal, 'sedang'),
-    (mu_usia_tua,    mu_bp_normal, mu_bplo_normal, mu_bmi_normal, mu_chol_normal, 'sedang'),
-    (mu_usia_tua,    mu_bp_normal, mu_bplo_normal, mu_bmi_over,   mu_chol_tinggi, 'tinggi'),
-    (mu_usia_tua,    mu_bp_pre,    mu_bplo_pre,    mu_bmi_normal, mu_chol_normal, 'sedang'),
-    (mu_usia_tua,    mu_bp_pre,    mu_bplo_pre,    mu_bmi_over,   mu_chol_tinggi, 'tinggi'),
-    (mu_usia_tua,    mu_bp_pre,    mu_bplo_hiper,  mu_bmi_obese,  mu_chol_tinggi, 'tinggi'),
-    (mu_usia_tua,    mu_bp_hiper,  mu_bplo_hiper,  mu_bmi_normal, mu_chol_normal, 'tinggi'),
-    (mu_usia_tua,    mu_bp_hiper,  mu_bplo_hiper,  mu_bmi_over,   mu_chol_tinggi, 'tinggi'),
-    (mu_usia_tua,    mu_bp_hiper,  mu_bplo_hiper,  mu_bmi_obese,  mu_chol_tinggi, 'tinggi'),
-    (mu_usia_muda,   mu_bp_normal, mu_bplo_hiper,  mu_bmi_normal, mu_chol_tinggi, 'sedang'),
-    (mu_usia_sedang, mu_bp_normal, mu_bplo_hiper,  mu_bmi_over,   mu_chol_tinggi, 'tinggi'),
-    (mu_usia_tua,    mu_bp_hiper,  mu_bplo_normal, mu_bmi_obese,  mu_chol_normal, 'tinggi'),
+    # === USIA MUDA (12 rules) ===
+    # (fn_usia, fn_bp, fn_bplo, fn_bmi, fn_chol, fn_gluc, konsekuen)
+    (mu_usia_muda, mu_bp_normal, mu_bplo_normal, mu_bmi_normal, mu_chol_normal, mu_gluc_normal, 'rendah'),
+    (mu_usia_muda, mu_bp_normal, mu_bplo_normal, mu_bmi_over,   mu_chol_normal, mu_gluc_normal, 'rendah'),
+    (mu_usia_muda, mu_bp_normal, mu_bplo_normal, mu_bmi_obese,  mu_chol_normal, mu_gluc_normal, 'sedang'),
+    (mu_usia_muda, mu_bp_pre,    mu_bplo_pre,    mu_bmi_normal, mu_chol_normal, mu_gluc_normal, 'rendah'),
+    (mu_usia_muda, mu_bp_pre,    mu_bplo_pre,    mu_bmi_over,   mu_chol_normal, mu_gluc_normal, 'sedang'),
+    (mu_usia_muda, mu_bp_pre,    mu_bplo_pre,    mu_bmi_over,   mu_chol_tinggi, mu_gluc_normal, 'sedang'),
+    (mu_usia_muda, mu_bp_pre,    mu_bplo_pre,    mu_bmi_over,   mu_chol_tinggi, mu_gluc_tinggi, 'tinggi'),
+    (mu_usia_muda, mu_bp_hiper,  mu_bplo_hiper,  mu_bmi_obese,  mu_chol_tinggi, mu_gluc_tinggi, 'tinggi'),
+    (mu_usia_muda, mu_bp_hiper,  mu_bplo_hiper,  mu_bmi_normal, mu_chol_normal, mu_gluc_normal, 'sedang'),
+    (mu_usia_muda, mu_bp_hiper,  mu_bplo_hiper,  mu_bmi_normal, mu_chol_tinggi, mu_gluc_normal, 'sedang'),
+    (mu_usia_muda, mu_bp_normal, mu_bplo_hiper,  mu_bmi_normal, mu_chol_tinggi, mu_gluc_normal, 'sedang'),
+    (mu_usia_muda, mu_bp_normal, mu_bplo_normal, mu_bmi_normal, mu_chol_tinggi, mu_gluc_tinggi, 'sedang'),
+
+    # === USIA SEDANG (15 rules) ===
+    (mu_usia_sedang, mu_bp_normal, mu_bplo_normal, mu_bmi_normal, mu_chol_normal, mu_gluc_normal, 'rendah'),
+    (mu_usia_sedang, mu_bp_normal, mu_bplo_normal, mu_bmi_over,   mu_chol_normal, mu_gluc_normal, 'sedang'),
+    (mu_usia_sedang, mu_bp_normal, mu_bplo_normal, mu_bmi_obese,  mu_chol_normal, mu_gluc_normal, 'sedang'),
+    (mu_usia_sedang, mu_bp_normal, mu_bplo_pre,    mu_bmi_obese,  mu_chol_tinggi, mu_gluc_normal, 'sedang'),
+    (mu_usia_sedang, mu_bp_pre,    mu_bplo_pre,    mu_bmi_normal, mu_chol_normal, mu_gluc_normal, 'sedang'),
+    (mu_usia_sedang, mu_bp_pre,    mu_bplo_pre,    mu_bmi_over,   mu_chol_normal, mu_gluc_normal, 'sedang'),
+    (mu_usia_sedang, mu_bp_pre,    mu_bplo_pre,    mu_bmi_over,   mu_chol_tinggi, mu_gluc_normal, 'tinggi'),
+    (mu_usia_sedang, mu_bp_pre,    mu_bplo_pre,    mu_bmi_over,   mu_chol_tinggi, mu_gluc_tinggi, 'tinggi'),
+    (mu_usia_sedang, mu_bp_hiper,  mu_bplo_hiper,  mu_bmi_obese,  mu_chol_tinggi, mu_gluc_tinggi, 'tinggi'),
+    (mu_usia_sedang, mu_bp_hiper,  mu_bplo_hiper,  mu_bmi_normal, mu_chol_normal, mu_gluc_normal, 'sedang'),
+    (mu_usia_sedang, mu_bp_hiper,  mu_bplo_hiper,  mu_bmi_over,   mu_chol_normal, mu_gluc_normal, 'tinggi'),
+    (mu_usia_sedang, mu_bp_normal, mu_bplo_hiper,  mu_bmi_over,   mu_chol_tinggi, mu_gluc_normal, 'tinggi'),
+    (mu_usia_sedang, mu_bp_normal, mu_bplo_normal, mu_bmi_normal, mu_chol_tinggi, mu_gluc_tinggi, 'sedang'),
+    (mu_usia_sedang, mu_bp_pre,    mu_bplo_normal, mu_bmi_over,   mu_chol_normal, mu_gluc_normal, 'sedang'),
+    (mu_usia_sedang, mu_bp_hiper,  mu_bplo_pre,    mu_bmi_over,   mu_chol_normal, mu_gluc_normal, 'tinggi'),
+
+    # === USIA TUA (15 rules) ===
+    (mu_usia_tua, mu_bp_normal, mu_bplo_normal, mu_bmi_normal, mu_chol_normal, mu_gluc_normal, 'sedang'),
+    (mu_usia_tua, mu_bp_normal, mu_bplo_normal, mu_bmi_over,   mu_chol_normal, mu_gluc_normal, 'sedang'),
+    (mu_usia_tua, mu_bp_normal, mu_bplo_normal, mu_bmi_over,   mu_chol_tinggi, mu_gluc_normal, 'tinggi'),
+    (mu_usia_tua, mu_bp_pre,    mu_bplo_pre,    mu_bmi_normal, mu_chol_normal, mu_gluc_normal, 'sedang'),
+    (mu_usia_tua, mu_bp_pre,    mu_bplo_pre,    mu_bmi_over,   mu_chol_normal, mu_gluc_normal, 'tinggi'),
+    (mu_usia_tua, mu_bp_pre,    mu_bplo_pre,    mu_bmi_over,   mu_chol_tinggi, mu_gluc_normal, 'tinggi'),
+    (mu_usia_tua, mu_bp_pre,    mu_bplo_hiper,  mu_bmi_obese,  mu_chol_tinggi, mu_gluc_tinggi, 'tinggi'),
+    (mu_usia_tua, mu_bp_hiper,  mu_bplo_hiper,  mu_bmi_normal, mu_chol_normal, mu_gluc_normal, 'tinggi'),
+    (mu_usia_tua, mu_bp_hiper,  mu_bplo_hiper,  mu_bmi_over,   mu_chol_tinggi, mu_gluc_normal, 'tinggi'),
+    (mu_usia_tua, mu_bp_hiper,  mu_bplo_hiper,  mu_bmi_obese,  mu_chol_tinggi, mu_gluc_tinggi, 'tinggi'),
+    (mu_usia_tua, mu_bp_hiper,  mu_bplo_normal, mu_bmi_obese,  mu_chol_normal, mu_gluc_normal, 'tinggi'),
+    (mu_usia_tua, mu_bp_normal, mu_bplo_normal, mu_bmi_normal, mu_chol_tinggi, mu_gluc_tinggi, 'tinggi'),
+    (mu_usia_tua, mu_bp_normal, mu_bplo_normal, mu_bmi_obese,  mu_chol_normal, mu_gluc_normal, 'tinggi'),
+    (mu_usia_tua, mu_bp_normal, mu_bplo_pre,    mu_bmi_over,   mu_chol_normal, mu_gluc_normal, 'tinggi'),
+    (mu_usia_tua, mu_bp_pre,    mu_bplo_normal, mu_bmi_normal, mu_chol_tinggi, mu_gluc_normal, 'tinggi'),
 ]
 
 # ==========================================
 # 3. FUNGSI INFERENSI
 # ==========================================
 
-def fuzzifikasi(usia, bp, bmi, ap_lo, chol):
+def fuzzifikasi(usia, bp, bmi, ap_lo, chol, gluc):
     return {
         'usia_muda'  : mu_usia_muda(usia),
         'usia_sedang': mu_usia_sedang(usia),
@@ -117,17 +150,22 @@ def fuzzifikasi(usia, bp, bmi, ap_lo, chol):
         'bmi_obese'  : mu_bmi_obese(bmi),
         'chol_normal': mu_chol_normal(chol),
         'chol_tinggi': mu_chol_tinggi(chol),
+        'gluc_normal': mu_gluc_normal(gluc),
+        'gluc_tinggi': mu_gluc_tinggi(gluc),
     }
 
-def evaluasi_rule(usia, bp, bmi, ap_lo, chol):
+def evaluasi_rule(usia, bp, bmi, ap_lo, chol, gluc):
+    """Evaluasi semua rule menggunakan PRODUCT t-norm (operator AND)."""
     result = []
-    for (fn_usia, fn_bp, fn_bplo, fn_bmi, fn_chol, konsekuen) in RULES:
-        alpha = min(fn_usia(usia), fn_bp(bp), fn_bplo(ap_lo), fn_bmi(bmi), fn_chol(chol))
+    for (fn_usia, fn_bp, fn_bplo, fn_bmi, fn_chol, fn_gluc, konsekuen) in RULES:
+        # PRODUCT t-norm: mengalikan semua derajat keanggotaan
+        alpha = (fn_usia(usia) * fn_bp(bp) * fn_bplo(ap_lo) *
+                 fn_bmi(bmi) * fn_chol(chol) * fn_gluc(gluc))
         result.append((alpha, konsekuen))
     return result
 
-def mamdani_inferensi(usia, bp, bmi, ap_lo, chol, n=400):
-    firing = evaluasi_rule(usia, bp, bmi, ap_lo, chol)
+def mamdani_inferensi(usia, bp, bmi, ap_lo, chol, gluc, n=400):
+    firing = evaluasi_rule(usia, bp, bmi, ap_lo, chol, gluc)
     S_vals = np.linspace(0, 100, n)
     agg    = np.zeros(n)
     for (alpha, konsekuen) in firing:
@@ -138,23 +176,23 @@ def mamdani_inferensi(usia, bp, bmi, ap_lo, chol, n=400):
     output = float(np.sum(S_vals * agg) / denom) if denom > 0 else 50.0
     return output
 
-def sugeno_inferensi(usia, bp, bmi, ap_lo, chol):
-    firing = evaluasi_rule(usia, bp, bmi, ap_lo, chol)
+def sugeno_inferensi(usia, bp, bmi, ap_lo, chol, gluc):
+    firing = evaluasi_rule(usia, bp, bmi, ap_lo, chol, gluc)
     num = sum(a * SUGENO_SINGLETON[k] for (a, k) in firing)
     den = sum(a for (a, _) in firing)
     return float(num / den) if den > 0 else 50.0
 
 def label_risiko(score):
     if score < 40:  return 'Rendah'
-    if score < 65:  return 'Sedang'
+    if score < 60:  return 'Sedang'
     return 'Tinggi'
 
 # ==========================================
 # 4. VISUALISASI
 # ==========================================
 
-def plot_mamdani(usia, bp, bmi, ap_lo, chol):
-    firing  = evaluasi_rule(usia, bp, bmi, ap_lo, chol)
+def plot_mamdani(usia, bp, bmi, ap_lo, chol, gluc):
+    firing  = evaluasi_rule(usia, bp, bmi, ap_lo, chol, gluc)
     S_vals  = np.linspace(0, 100, 400)
     
     alpha_per = {'rendah': 0.0, 'sedang': 0.0, 'tinggi': 0.0}
@@ -210,24 +248,24 @@ def plot_mamdani(usia, bp, bmi, ap_lo, chol):
     
     legend = ax.legend(loc='upper left', facecolor='#1c2028', edgecolor=GRID, labelcolor='#c9d1d9', fontsize=10)
     
-    info = (f'Input  →  Usia: {usia:.1f} th | BP Sistolik: {bp} mmHg | BP Diastolik: {ap_lo} mmHg | BMI: {bmi:.1f} | Kolesterol: {chol}\n'
+    info = (f'Input  →  Usia: {usia:.1f} th | BP Sis: {bp} mmHg | BP Dia: {ap_lo} mmHg | BMI: {bmi:.1f} | Kolesterol: {chol} | Glukosa: {gluc}\n'
             f'Output →  Centroid Mamdani: {centroid:.2f}%  |  Kategori: {label_risiko(centroid)}')
     fig.text(0.5, 0.01, info, ha='center', color='#8b949e', fontsize=10, bbox=dict(fc='#161b22', ec=GRID, pad=5))
     plt.tight_layout(rect=[0, 0.07, 1, 1])
     return fig
 
-def plot_sugeno(usia, bp, bmi, ap_lo, chol):
-    firing = evaluasi_rule(usia, bp, bmi, ap_lo, chol)
+def plot_sugeno(usia, bp, bmi, ap_lo, chol, gluc):
+    firing = evaluasi_rule(usia, bp, bmi, ap_lo, chol, gluc)
     active = [(i+1, a, k) for i, (a, k) in enumerate(firing) if a > 0]
-    sugeno_out = sugeno_inferensi(usia, bp, bmi, ap_lo, chol)
+    sugeno_out = sugeno_inferensi(usia, bp, bmi, ap_lo, chol, gluc)
     
     COLOR_MAP = {'rendah': '#3b82f6', 'sedang': '#10b981', 'tinggi': '#f59e0b'}
     BG   = '#0d1117'
     CARD = '#161b22'
     GRID = '#21262d'
     
-    fig = plt.figure(figsize=(13, 12), facecolor=BG)
-    gs  = gridspec.GridSpec(3, 2, figure=fig, hspace=0.45, wspace=0.35)
+    fig = plt.figure(figsize=(13, 16), facecolor=BG)
+    gs  = gridspec.GridSpec(4, 2, figure=fig, hspace=0.45, wspace=0.35)
     
     # Panel 1: Usia
     ax1 = fig.add_subplot(gs[0, 0], facecolor=CARD)
@@ -255,7 +293,7 @@ def plot_sugeno(usia, bp, bmi, ap_lo, chol):
     ax2.grid(True, color=GRID, lw=0.6); _ = [s.set_color(GRID) for s in ax2.spines.values()]
     ax2.tick_params(colors='#8b949e', labelsize=8)
     
-    # Panel Tambahan: BP Diastolik & Kolesterol
+    # Panel 3: BP Diastolik
     ax_bplo = fig.add_subplot(gs[1, 0], facecolor=CARD)
     bplo_x = np.linspace(30, 200, 500)
     ax_bplo.plot(bplo_x, [mu_bplo_normal(v) for v in bplo_x], color='#3b82f6', lw=2, label='Normal')
@@ -264,21 +302,49 @@ def plot_sugeno(usia, bp, bmi, ap_lo, chol):
     ax_bplo.axvline(ap_lo, color='#ff6b6b', ls='--', lw=1.5, label=f'Input={ap_lo}')
     ax_bplo.set_title('Fungsi Keanggotaan (MF) Tekanan Diastolik', color='#c9d1d9', fontsize=11, fontweight='bold')
     ax_bplo.set_ylabel('μ', color='#8b949e', fontsize=10)
+    ax_bplo.legend(facecolor='#1c2028', edgecolor=GRID, labelcolor='#c9d1d9', fontsize=8)
     ax_bplo.grid(True, color=GRID, lw=0.6); _ = [s.set_color(GRID) for s in ax_bplo.spines.values()]
     ax_bplo.tick_params(colors='#8b949e', labelsize=8)
 
-    ax_chol = fig.add_subplot(gs[1, 1], facecolor=CARD)
+    # Panel 4: BMI (dipindahkan ke grid 1,1 untuk ruang baru)
+    ax_bmi = fig.add_subplot(gs[1, 1], facecolor=CARD)
+    bmi_x = np.linspace(10, 60, 500)
+    ax_bmi.plot(bmi_x, [mu_bmi_normal(v) for v in bmi_x], color='#3b82f6', lw=2, label='Normal')
+    ax_bmi.plot(bmi_x, [mu_bmi_over(v) for v in bmi_x],   color='#10b981', lw=2, label='Overweight')
+    ax_bmi.plot(bmi_x, [mu_bmi_obese(v) for v in bmi_x],  color='#f59e0b', lw=2, label='Obesitas')
+    ax_bmi.axvline(bmi, color='#ff6b6b', ls='--', lw=1.5, label=f'Input={bmi:.1f}')
+    ax_bmi.set_title('Fungsi Keanggotaan (MF) BMI', color='#c9d1d9', fontsize=11, fontweight='bold')
+    ax_bmi.set_ylabel('μ', color='#8b949e', fontsize=10)
+    ax_bmi.legend(facecolor='#1c2028', edgecolor=GRID, labelcolor='#c9d1d9', fontsize=8)
+    ax_bmi.grid(True, color=GRID, lw=0.6); _ = [s.set_color(GRID) for s in ax_bmi.spines.values()]
+    ax_bmi.tick_params(colors='#8b949e', labelsize=8)
+
+    # Panel 5: Kolesterol
+    ax_chol = fig.add_subplot(gs[2, 0], facecolor=CARD)
     chol_x = np.linspace(0, 5, 100)
     ax_chol.plot(chol_x, [mu_chol_normal(v) for v in chol_x], color='#3b82f6', lw=2, label='Normal')
     ax_chol.plot(chol_x, [mu_chol_tinggi(v) for v in chol_x], color='#f59e0b', lw=2, label='Tinggi')
     ax_chol.axvline(chol, color='#ff6b6b', ls='--', lw=1.5, label=f'Input={chol}')
     ax_chol.set_title('Fungsi Keanggotaan (MF) Tingkat Kolesterol', color='#c9d1d9', fontsize=11, fontweight='bold')
     ax_chol.set_ylabel('μ', color='#8b949e', fontsize=10)
+    ax_chol.legend(facecolor='#1c2028', edgecolor=GRID, labelcolor='#c9d1d9', fontsize=8)
     ax_chol.grid(True, color=GRID, lw=0.6); _ = [s.set_color(GRID) for s in ax_chol.spines.values()]
     ax_chol.tick_params(colors='#8b949e', labelsize=8)
 
-    # Panel 3: Firing Strength
-    ax3 = fig.add_subplot(gs[2, 0], facecolor=CARD)
+    # Panel 6: Glukosa (BARU)
+    ax_gluc = fig.add_subplot(gs[2, 1], facecolor=CARD)
+    gluc_x = np.linspace(0, 5, 100)
+    ax_gluc.plot(gluc_x, [mu_gluc_normal(v) for v in gluc_x], color='#3b82f6', lw=2, label='Normal')
+    ax_gluc.plot(gluc_x, [mu_gluc_tinggi(v) for v in gluc_x], color='#f59e0b', lw=2, label='Tinggi')
+    ax_gluc.axvline(gluc, color='#ff6b6b', ls='--', lw=1.5, label=f'Input={gluc}')
+    ax_gluc.set_title('Fungsi Keanggotaan (MF) Tingkat Glukosa', color='#c9d1d9', fontsize=11, fontweight='bold')
+    ax_gluc.set_ylabel('μ', color='#8b949e', fontsize=10)
+    ax_gluc.legend(facecolor='#1c2028', edgecolor=GRID, labelcolor='#c9d1d9', fontsize=8)
+    ax_gluc.grid(True, color=GRID, lw=0.6); _ = [s.set_color(GRID) for s in ax_gluc.spines.values()]
+    ax_gluc.tick_params(colors='#8b949e', labelsize=8)
+
+    # Panel 7: Firing Strength
+    ax3 = fig.add_subplot(gs[3, 0], facecolor=CARD)
     if active:
         rule_ids = [f'R{r}' for (r, a, k) in active]
         alphas   = [a for (r, a, k) in active]
@@ -295,8 +361,8 @@ def plot_sugeno(usia, bp, bmi, ap_lo, chol):
     _ = [s.set_color(GRID) for s in ax3.spines.values()]
     ax3.tick_params(colors='#8b949e', labelsize=8)
     
-    # Panel 4: Sugeno Weighted
-    ax4 = fig.add_subplot(gs[2, 1], facecolor=CARD)
+    # Panel 8: Sugeno Weighted
+    ax4 = fig.add_subplot(gs[3, 1], facecolor=CARD)
     if active:
         rule_ids  = [f'R{r}\n({k[:3]})' for (r, a, k) in active]
         contrib   = [a * SUGENO_SINGLETON[k] for (r, a, k) in active]
@@ -317,7 +383,7 @@ def plot_sugeno(usia, bp, bmi, ap_lo, chol):
     ax4.tick_params(colors='#8b949e', labelsize=8)
     
     fig.suptitle(
-        f'Sugeno FIS | Usia: {usia:.1f} | BP Sis: {bp} | BP Dia: {ap_lo} | BMI: {bmi:.1f} | Kolesterol: {chol}\n'
+        f'Sugeno FIS | Usia: {usia:.1f} | BP Sis: {bp} | BP Dia: {ap_lo} | BMI: {bmi:.1f} | Kolesterol: {chol} | Glukosa: {gluc}\n'
         f'Output Weighted Average: {sugeno_out:.2f}%  →  Kategori: {label_risiko(sugeno_out)}',
         color='#ffffff', fontsize=12, fontweight='bold', y=1.01
     )
@@ -331,6 +397,8 @@ def plot_sugeno(usia, bp, bmi, ap_lo, chol):
 
 @st.cache_resource
 def load_model_and_scaler():
+    if not HAS_DL:
+        return None, None
     try:
         loaded_model  = tf.keras.models.load_model('model_hybrid_dka.h5')
         loaded_scaler = joblib.load('scaler_hybrid_dka.pkl')
@@ -342,8 +410,11 @@ model_dl, scaler_dl = load_model_and_scaler()
 
 st.title("🫀 Fuzzy Inference System - Risiko Kardiovaskular")
 st.markdown("""
-Aplikasi web ini menggunakan **Logika Fuzzy (Mamdani & Sugeno)** untuk memprediksi risiko penyakit kardiovaskular berdasarkan 5 variabel input:
-Usia, Tekanan Darah Sistolik, Tekanan Darah Diastolik, BMI, dan Kolesterol.
+Aplikasi web ini menggunakan **Logika Fuzzy (Mamdani & Sugeno)** untuk memprediksi risiko penyakit kardiovaskular berdasarkan **6 variabel input**:
+Usia, Tekanan Darah Sistolik, Tekanan Darah Diastolik, BMI, Kolesterol, dan Glukosa.
+
+**Peningkatan v2:** Rule base diperluas menjadi 42 aturan, penambahan variabel Glukosa,
+operator PRODUCT t-norm, dan tuning Sugeno singleton berbasis data.
 """)
 
 st.sidebar.header("Data Pasien (Input)")
@@ -352,18 +423,25 @@ in_aphi = st.sidebar.slider("Tekanan Darah Sistolik (mmHg)", 60, 250, 120)
 in_aplo = st.sidebar.slider("Tekanan Darah Diastolik (mmHg)", 40, 150, 80)
 in_bmi = st.sidebar.slider("Body Mass Index (BMI)", 10.0, 50.0, 24.5)
 in_chol = st.sidebar.selectbox("Tingkat Kolesterol (1=Normal, 2=Tinggi, 3=Sangat Tinggi)", [1, 2, 3])
+in_gluc = st.sidebar.selectbox("Tingkat Glukosa (1=Normal, 2=Tinggi, 3=Sangat Tinggi)", [1, 2, 3])
 
 if st.sidebar.button("Hitung Prediksi Risiko", type="primary"):
     st.markdown("---")
     st.subheader("📊 Hasil Prediksi")
     
-    score_m = mamdani_inferensi(in_usia, in_aphi, in_bmi, in_aplo, in_chol)
-    score_s = sugeno_inferensi(in_usia, in_aphi, in_bmi, in_aplo, in_chol)
+    score_m = mamdani_inferensi(in_usia, in_aphi, in_bmi, in_aplo, in_chol, in_gluc)
+    score_s = sugeno_inferensi(in_usia, in_aphi, in_bmi, in_aplo, in_chol, in_gluc)
     
     dl_prob = 0.0
     dl_label = "Model Not Found"
     if model_dl is not None and scaler_dl is not None:
-        X_input = scaler_dl.transform([[in_usia, in_aphi, in_aplo, in_bmi, in_chol, score_m]])
+        # Cek jumlah fitur yang diharapkan scaler
+        n_features = scaler_dl.n_features_in_
+        if n_features >= 7:
+            X_input = scaler_dl.transform([[in_usia, in_aphi, in_aplo, in_bmi, in_chol, in_gluc, score_m]])
+        else:
+            # Fallback: gunakan fitur lama jika scaler belum di-retrain
+            X_input = scaler_dl.transform([[in_usia, in_aphi, in_aplo, in_bmi, in_chol, score_m]])
         dl_prob = float(model_dl.predict(X_input, verbose=0)[0][0])
         dl_label = 'Tinggi' if dl_prob >= 0.5 else 'Rendah'
         
@@ -381,12 +459,12 @@ if st.sidebar.button("Hitung Prediksi Risiko", type="primary"):
         
     st.markdown("---")
     st.subheader("📈 Visualisasi Proses Fuzzy (Mamdani)")
-    fig_m = plot_mamdani(in_usia, in_aphi, in_bmi, in_aplo, in_chol)
+    fig_m = plot_mamdani(in_usia, in_aphi, in_bmi, in_aplo, in_chol, in_gluc)
     st.pyplot(fig_m)
     
     st.markdown("---")
     st.subheader("📈 Visualisasi Proses Fuzzy (Sugeno)")
-    fig_s = plot_sugeno(in_usia, in_aphi, in_bmi, in_aplo, in_chol)
+    fig_s = plot_sugeno(in_usia, in_aphi, in_bmi, in_aplo, in_chol, in_gluc)
     st.pyplot(fig_s)
     
     st.success("Perhitungan berhasil diselesaikan!")
