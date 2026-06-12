@@ -418,10 +418,10 @@ operator PRODUCT t-norm, dan tuning Sugeno singleton berbasis data.
 """)
 
 st.sidebar.header("Data Pasien (Input)")
-in_usia = st.sidebar.slider("Usia (Tahun)", 20, 80, 50)
-in_aphi = st.sidebar.slider("Tekanan Darah Sistolik (mmHg)", 60, 250, 120)
-in_aplo = st.sidebar.slider("Tekanan Darah Diastolik (mmHg)", 40, 150, 80)
-in_bmi = st.sidebar.slider("Body Mass Index (BMI)", 10.0, 50.0, 24.5)
+in_usia = st.sidebar.number_input("Usia (Tahun)", min_value=20, max_value=80, value=50, step=1)
+in_aphi = st.sidebar.number_input("Tekanan Darah Sistolik (mmHg)", min_value=60, max_value=250, value=120, step=1)
+in_aplo = st.sidebar.number_input("Tekanan Darah Diastolik (mmHg)", min_value=40, max_value=150, value=80, step=1)
+in_bmi = st.sidebar.number_input("Body Mass Index (BMI)", min_value=10.0, max_value=50.0, value=24.5, step=0.1)
 in_chol = st.sidebar.selectbox("Tingkat Kolesterol (1=Normal, 2=Tinggi, 3=Sangat Tinggi)", [1, 2, 3])
 in_gluc = st.sidebar.selectbox("Tingkat Glukosa (1=Normal, 2=Tinggi, 3=Sangat Tinggi)", [1, 2, 3])
 
