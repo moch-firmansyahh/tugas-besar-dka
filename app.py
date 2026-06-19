@@ -412,15 +412,20 @@ st.title("🫀 Fuzzy Inference System - Risiko Kardiovaskular")
 st.markdown("""
 Aplikasi web ini menggunakan **Logika Fuzzy (Mamdani & Sugeno)** untuk memprediksi risiko penyakit kardiovaskular berdasarkan **6 variabel input**:
 Usia, Tekanan Darah Sistolik, Tekanan Darah Diastolik, BMI, Kolesterol, dan Glukosa.
-
-**Peningkatan v2:** Rule base diperluas menjadi 42 aturan, penambahan variabel Glukosa,
-operator PRODUCT t-norm, dan tuning Sugeno singleton berbasis data.
 """)
 
 st.sidebar.header("Data Pasien (Input)")
 in_usia = st.sidebar.number_input("Usia (Tahun)", min_value=20, max_value=80, value=50, step=1)
 in_aphi = st.sidebar.number_input("Tekanan Darah Sistolik (mmHg)", min_value=60, max_value=250, value=120, step=1)
 in_aplo = st.sidebar.number_input("Tekanan Darah Diastolik (mmHg)", min_value=40, max_value=150, value=80, step=1)
+
+with st.sidebar.expander("🧮 Kalkulator BMI (Opsional)"):
+    berat = st.number_input("Berat Badan (kg)", min_value=1.0, value=65.0, step=1.0)
+    tinggi = st.number_input("Tinggi Badan (cm)", min_value=50.0, value=165.0, step=1.0)
+    if tinggi > 0:
+        bmi_calc = berat / ((tinggi/100)**2)
+        st.info(f"Hasil BMI: **{bmi_calc:.1f}** (Masukkan angka ini ke kolom BMI)")
+
 in_bmi = st.sidebar.number_input("Body Mass Index (BMI)", min_value=10.0, max_value=50.0, value=24.5, step=0.1)
 in_chol = st.sidebar.selectbox("Tingkat Kolesterol (1=Normal, 2=Tinggi, 3=Sangat Tinggi)", [1, 2, 3])
 in_gluc = st.sidebar.selectbox("Tingkat Glukosa (1=Normal, 2=Tinggi, 3=Sangat Tinggi)", [1, 2, 3])
