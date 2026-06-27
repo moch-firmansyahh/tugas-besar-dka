@@ -14,7 +14,89 @@ import matplotlib.gridspec as gridspec
 import matplotlib.patches as mpatches
 import math
 
-st.set_page_config(page_title="Fuzzy DKA - Risiko Kardiovaskular", layout="wide")
+st.set_page_config(page_title="Fuzzy DKA - Risiko Kardiovaskular", layout="wide", initial_sidebar_state="expanded")
+
+st.markdown("""
+<style>
+    /* Main Theme */
+    [data-testid="stAppViewContainer"] {
+        background-color: #0d1117;
+        background-image: radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 400px), 
+                          radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.05), transparent 400px);
+    }
+    
+    [data-testid="stSidebar"] {
+        background-color: #161b22;
+        border-right: 1px solid #30363d;
+    }
+    
+    /* Input adjustments */
+    .stNumberInput > label, .stSelectbox > label {
+        color: #8b949e !important;
+        font-weight: 600 !important;
+    }
+    
+    /* Elegant Button */
+    .stButton > button {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: bold;
+        font-size: 16px;
+        padding: 0.6rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3);
+    }
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px -1px rgba(59, 130, 246, 0.5);
+    }
+    
+    /* Clean Expanders */
+    .streamlit-expanderHeader {
+        background-color: #21262d !important;
+        border-radius: 6px;
+        color: #c9d1d9 !important;
+    }
+    
+    /* Titles */
+    .main-title {
+        text-align: center;
+        font-size: 3rem;
+        font-weight: 800;
+        background: -webkit-linear-gradient(45deg, #60a5fa, #34d399);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-bottom: 0.5rem;
+        padding-top: 1rem;
+    }
+    .sub-title {
+        text-align: center;
+        color: #8b949e;
+        font-size: 1.1rem;
+        margin-bottom: 2rem;
+    }
+    
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 24px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: transparent;
+        border-radius: 4px 4px 0px 0px;
+        gap: 1px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: rgba(59, 130, 246, 0.1) !important;
+        border-bottom-color: #3b82f6 !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # ==========================================
 # 1. MEMBERSHIP FUNCTIONS
@@ -408,18 +490,16 @@ def load_model_and_scaler():
 
 model_dl, scaler_dl = load_model_and_scaler()
 
-st.title("🫀 Fuzzy Inference System - Risiko Kardiovaskular")
-st.markdown("""
-Aplikasi web ini menggunakan **Logika Fuzzy (Mamdani & Sugeno)** untuk memprediksi risiko penyakit kardiovaskular berdasarkan **6 variabel input**:
-Usia, Tekanan Darah Sistolik, Tekanan Darah Diastolik, BMI, Kolesterol, dan Glukosa.
-""")
+st.markdown("<h1 class='main-title'>🩺 Prediksi Risiko Kardiovaskular</h1>", unsafe_allow_html=True)
+st.markdown("<p class='sub-title'>Sistem Inferensi Fuzzy Terintegrasi (Mamdani, Sugeno & Deep Learning)</p>", unsafe_allow_html=True)
+st.markdown("---")
 
-st.sidebar.header("Data Pasien (Input)")
+st.sidebar.markdown("<h2 style='text-align: center; color: #f0f6fc; margin-bottom: 20px; font-weight: 700;'>📋 Data Pasien</h2>", unsafe_allow_html=True)
 in_usia = st.sidebar.number_input("Usia (Tahun)", min_value=20, max_value=80, value=50, step=1)
 in_aphi = st.sidebar.number_input("Tekanan Darah Sistolik (mmHg)", min_value=60, max_value=250, value=120, step=1)
 in_aplo = st.sidebar.number_input("Tekanan Darah Diastolik (mmHg)", min_value=40, max_value=150, value=80, step=1)
 
-with st.sidebar.expander("🧮 Kalkulator BMI (Opsional)"):
+with st.sidebar.expander("Kalkulator BMI"):
     berat = st.number_input("Berat Badan (kg)", min_value=1.0, value=65.0, step=1.0)
     tinggi = st.number_input("Tinggi Badan (cm)", min_value=50.0, value=165.0, step=1.0)
     if tinggi > 0:
@@ -432,13 +512,16 @@ in_gluc = st.sidebar.selectbox("Tingkat Glukosa (1=Normal, 2=Tinggi, 3=Sangat Ti
 
 if st.sidebar.button("Hitung Prediksi Risiko", type="primary"):
     st.markdown("---")
-    st.subheader("📊 Hasil Prediksi")
+    st.markdown("<h2 style='text-align: center; color: #f8fafc; margin-bottom: 30px;'>📊 Hasil Prediksi Risiko</h2>", unsafe_allow_html=True)
     
     score_m = mamdani_inferensi(in_usia, in_aphi, in_bmi, in_aplo, in_chol, in_gluc)
     score_s = sugeno_inferensi(in_usia, in_aphi, in_bmi, in_aplo, in_chol, in_gluc)
     
     dl_prob = 0.0
     dl_label = "Model Not Found"
+    is_dl_error = False
+    dl_val_str = "N/A"
+    
     if model_dl is not None and scaler_dl is not None:
         # Cek jumlah fitur yang diharapkan scaler
         n_features = scaler_dl.n_features_in_
@@ -449,27 +532,71 @@ if st.sidebar.button("Hitung Prediksi Risiko", type="primary"):
             X_input = scaler_dl.transform([[in_usia, in_aphi, in_aplo, in_bmi, in_chol, score_m]])
         dl_prob = float(model_dl.predict(X_input, verbose=0)[0][0])
         dl_label = 'Tinggi' if dl_prob >= 0.5 else 'Rendah'
-        
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric(label="Skor Mamdani", value=f"{score_m:.2f}%", delta=label_risiko(score_m), delta_color="inverse")
-    with col2:
-        st.metric(label="Skor Sugeno", value=f"{score_s:.2f}%", delta=label_risiko(score_s), delta_color="inverse")
-    with col3:
-        if model_dl is not None:
-            st.metric(label="DL Hybrid", value=f"{dl_prob*100:.2f}%", delta=dl_label, delta_color="inverse")
+        dl_val_str = f"{dl_prob*100:.2f}%"
+    else:
+        is_dl_error = True
+        dl_label = "File Model Hilang"
+
+    def render_metric_card(title, value, label, is_error=False):
+        if is_error:
+            color = "#ef4444"
+            bg_color = "rgba(239, 68, 68, 0.15)"
+            icon = "⚠️"
         else:
-            st.metric(label="DL Hybrid", value="N/A", delta="File Model Hilang")
+            if label == "Rendah":
+                color = "#10b981"
+                bg_color = "rgba(16, 185, 129, 0.15)"
+                icon = "⬇️"
+            elif label == "Sedang":
+                color = "#f59e0b"
+                bg_color = "rgba(245, 158, 11, 0.15)"
+                icon = "➖"
+            else:
+                color = "#ef4444"
+                bg_color = "rgba(239, 68, 68, 0.15)"
+                icon = "⬆️"
+                
+        card_html = f"""
+        <div style="
+            background-color: #161b22;
+            border: 1px solid #30363d;
+            border-top: 4px solid {color};
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+            margin-bottom: 20px;
+            text-align: center;
+            transition: transform 0.2s;
+        ">
+            <p style="margin: 0; color: #8b949e; font-size: 15px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">{title}</p>
+            <h2 style="margin: 15px 0; color: #f0f6fc; font-size: 38px; font-weight: 700;">{value}</h2>
+            <div style="display: inline-block; background-color: {bg_color}; border: 1px solid {color}40; padding: 4px 16px; border-radius: 9999px;">
+                <span style="color: {color}; font-weight: 600; font-size: 14px;">{icon} {label}</span>
+            </div>
+        </div>
+        """
+        st.markdown(card_html, unsafe_allow_html=True)
         
-    st.markdown("---")
-    st.subheader("📈 Visualisasi Proses Fuzzy (Mamdani)")
-    fig_m = plot_mamdani(in_usia, in_aphi, in_bmi, in_aplo, in_chol, in_gluc)
-    st.pyplot(fig_m)
+    st.markdown("<br>", unsafe_allow_html=True)
+    tab_res, tab_mam, tab_sug = st.tabs(["📊 Ringkasan Hasil", "📈 Visualisasi Mamdani", "📉 Visualisasi Sugeno"])
     
-    st.markdown("---")
-    st.subheader("📈 Visualisasi Proses Fuzzy (Sugeno)")
-    fig_s = plot_sugeno(in_usia, in_aphi, in_bmi, in_aplo, in_chol, in_gluc)
-    st.pyplot(fig_s)
-    
-    st.success("Perhitungan berhasil diselesaikan!")
+    with tab_res:
+        st.markdown("<h3 style='text-align: center; color: #c9d1d9; margin-bottom: 30px; font-weight: 400;'>Persentase Tingkat Risiko Pasien</h3>", unsafe_allow_html=True)
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            render_metric_card("Skor Mamdani", f"{score_m:.2f}%", label_risiko(score_m))
+        with col2:
+            render_metric_card("Skor Sugeno", f"{score_s:.2f}%", label_risiko(score_s))
+        with col3:
+            render_metric_card("DL Hybrid", dl_val_str, dl_label, is_error=is_dl_error)
+        st.success("✅ Perhitungan prediksi berhasil diselesaikan dengan sukses!")
+            
+    with tab_mam:
+        st.markdown("<h3 style='text-align: center; color: #c9d1d9; margin-bottom: 20px;'>Proses Inferensi Mamdani</h3>", unsafe_allow_html=True)
+        fig_m = plot_mamdani(in_usia, in_aphi, in_bmi, in_aplo, in_chol, in_gluc)
+        st.pyplot(fig_m)
+        
+    with tab_sug:
+        st.markdown("<h3 style='text-align: center; color: #c9d1d9; margin-bottom: 20px;'>Proses Inferensi Sugeno</h3>", unsafe_allow_html=True)
+        fig_s = plot_sugeno(in_usia, in_aphi, in_bmi, in_aplo, in_chol, in_gluc)
+        st.pyplot(fig_s)
